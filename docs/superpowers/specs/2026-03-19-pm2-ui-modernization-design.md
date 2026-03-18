@@ -10,10 +10,12 @@ Clean rewrite of PM2 UI: a local-only dashboard for managing PM2 processes. Migr
 
 ### Custom Server (`server.js`)
 
-A single Node.js process runs both Next.js and a WebSocket server:
+A single Node.js process runs both Next.js and a WebSocket server on the **same HTTP server and port** (3000):
 
+- Creates an `http.Server`, passes it to both `next()` request handler and `new WebSocketServer({ server })` — single port, no second listener
 - Maintains one persistent PM2 connection (no connect/disconnect per request)
-- Polls PM2 every 2-3 seconds, broadcasts process list diffs to WebSocket clients
+- Polls PM2 every 2-3 seconds, caches the process list, broadcasts to WebSocket clients only when the list has changed
+- On new WebSocket connection: immediately sends the cached `PROCESS_LIST` (no waiting for next poll cycle)
 - Handles PM2 actions (restart/stop/start/reload/delete) via bidirectional WebSocket messages
 - Graceful shutdown: disconnects PM2, closes WebSocket connections
 
@@ -94,15 +96,16 @@ pm2-ui/
 Server-side module encapsulating all PM2 interaction:
 
 - `connect()` / `disconnect()` — lifecycle management
-- `getProcessList()` — calls `pm2.list()`, maps to clean process objects
+- `getProcessList()` — calls `pm2.list()`, maps to clean process objects containing: `name`, `status`, `cpu`, `memory`, `uptime`, `pid`, `instanceId` (from `pm2_env.NODE_APP_INSTANCE`). Cluster grouping is driven by `name` — all instances sharing the same `name` belong to one group. Actions on a group target the `name` string (PM2 natively applies to all instances of that name).
 - `executeAction(appName, action)` — validates action against allowlist, executes
 - `describeProcess(appName)` — for log file path discovery
-- `readLogs(appName, lines)` — reads last N lines from stdout/stderr
+- `readLogs(appName, lines)` — reads last N lines from stdout/stderr via `read-last-lines`
+- `tailLogs(appName, callback)` / `stopTailing(appName)` — uses `fs.watch` on the log files to detect appends, reads new lines, and invokes callback with `{ stream: "out"|"err", lines: [...] }`. Called by `server.js` when a client sends `SUBSCRIBE_LOGS`; stopped on `UNSUBSCRIBE_LOGS`. Initial subscription sends last N lines via `readLogs`, then switches to tailing.
 
 ## Custom Hooks
 
-- `usePM2()` — connects WebSocket, maintains process list state, exposes `executeAction(appName, action)` returning a promise resolved on `ACTION_RESULT`
-- `useLogs(appName)` — subscribes to log stream on mount, unsubscribes on unmount, maintains stdout/stderr line buffers
+- `usePM2()` — connects WebSocket, maintains process list state, exposes `executeAction(appName, action)` returning a promise resolved on `ACTION_RESULT`. Promises have a 10-second timeout to avoid hanging on server restarts. Includes automatic reconnection with exponential backoff (1s, 2s, 4s, capped at 30s). Exposes a `connected` boolean for the UI status indicator.
+- `useLogs(appName)` — subscribes to log stream on mount, unsubscribes on unmount, maintains stdout/stderr line buffers. Resubscribes automatically on WebSocket reconnection.
 
 ## UI Design
 
@@ -140,26 +143,29 @@ Status changes animate the badge and metric values rather than snapping.
 
 ## Dependencies
 
-### Add
-- `ws` — WebSocket server
-- `vitest` — Test runner
-
 ### Keep
+**Runtime (`dependencies`):**
 - `next`, `react`, `react-dom` — Core framework
 - `pm2` — PM2 API
-- `tailwindcss`, `postcss`, `autoprefixer` — Styling
+- `ws` — WebSocket server (new)
 - `@fortawesome/react-fontawesome` + icon packages — Icons
+- `@headlessui/react` — Popover, Switch (focus trapping, outside-click)
 - `read-last-lines` — Log file reading
 - `ansi-to-html` — Log ANSI color rendering
 - `react-toastify` — Toast notifications
+
+**Build/dev (`devDependencies`):**
+- `tailwindcss`, `postcss`, `autoprefixer` — Styling (build-time only)
+- `vitest` — Test runner (new)
+- `eslint`, `eslint-config-next` — Linting
 
 ### Remove
 - `next-auth` — No auth needed
 - `argon2`, `bcryptjs`, `jsonwebtoken`, `cookie` — Auth-related
 - `react-router-dom` — Unused (Next.js routing)
 - `event-stream`, `prompts`, `dotenv`, `envfile` — Unused
-- `@headlessui/react` — Evaluate; likely replaced by simpler custom components
-- `nodemon` — Unnecessary with custom server
+- `@headlessui/react` — Keep for now. The `Popover` (action menus, delete confirm) and `Switch` (status toggles) handle focus trapping and outside-click dismissal correctly; reimplementing these from scratch is not worth the effort for a personal tool.
+- `nodemon` — Unnecessary; use `node --watch server.js` for dev (native in Node 22+)
 
 ## Testing
 
@@ -171,29 +177,45 @@ Lean test suite appropriate for a personal tool:
 
 ## Docker
 
+Multi-stage build to keep the final image lean:
+
 ```dockerfile
+# Build stage
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY package.json yarn.lock ./
+RUN yarn install
+COPY . .
+RUN yarn build
+
+# Production stage
 FROM node:22-alpine
 WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install --production
-COPY . .
-RUN yarn build
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/server.js ./server.js
+COPY --from=builder /app/src/lib ./src/lib
+COPY --from=builder /app/next.config.js ./next.config.js
 EXPOSE 3000
 CMD ["node", "server.js"]
 ```
 
 Must mount host PM2 socket: `-v /root/.pm2:/root/.pm2`
 
+`yarn install` (without `--production`) in the build stage because `next build` requires dev dependencies (`tailwindcss`, `postcss`, `eslint-config-next`). The production stage only installs runtime deps.
+
 ## Environment
 
 - `.env.example` committed with documented vars: `PORT=3000`, `PM2_POLL_INTERVAL=3000`, `LOG_LINES=200`
-- `.env.local` removed from version control, added to `.gitignore`
+- `.env.local` removed from version control via `git rm --cached .env.local`, then added to `.gitignore`
 
 ## Scripts
 
 ```json
 {
-  "dev": "node server.js",
+  "dev": "node --watch server.js",
   "build": "next build",
   "start": "NODE_ENV=production node server.js",
   "lint": "next lint",
