@@ -164,7 +164,6 @@ Status changes animate the badge and metric values rather than snapping.
 - `argon2`, `bcryptjs`, `jsonwebtoken`, `cookie` — Auth-related
 - `react-router-dom` — Unused (Next.js routing)
 - `event-stream`, `prompts`, `dotenv`, `envfile` — Unused
-- `@headlessui/react` — Keep for now. The `Popover` (action menus, delete confirm) and `Switch` (status toggles) handle focus trapping and outside-click dismissal correctly; reimplementing these from scratch is not worth the effort for a personal tool.
 - `nodemon` — Unnecessary; use `node --watch server.js` for dev (native in Node 22+)
 
 ## Testing
