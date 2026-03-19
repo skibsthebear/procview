@@ -61,12 +61,41 @@ export default function ProcessCard({ name, instances, onAction }) {
   const totalCpu = instances.reduce((sum, p) => sum + p.cpu, 0);
   const totalMemory = instances.reduce((sum, p) => sum + p.memory, 0);
 
+  const port = instances[0]?.port ?? null;
+  const serviceUrl = port ? `http://localhost:${port}` : null;
+
+  function handleCardClick() {
+    if (serviceUrl) window.open(serviceUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  function handleCardKeyDown(e) {
+    if (e.key === 'Enter' && serviceUrl) window.open(serviceUrl, '_blank', 'noopener,noreferrer');
+  }
+
   return (
-    <div className="glass-card p-4 flex flex-col gap-3 transition-all duration-200">
+    <div
+      className={`glass-card p-4 flex flex-col gap-3 transition-all duration-200 ${serviceUrl ? 'cursor-pointer hover:border-white/20 hover:bg-white/[0.04]' : ''}`}
+      onClick={handleCardClick}
+      onKeyDown={handleCardKeyDown}
+      role={serviceUrl ? 'link' : undefined}
+      tabIndex={serviceUrl ? 0 : undefined}
+      aria-label={serviceUrl ? `Open ${name} at ${serviceUrl}` : undefined}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <StatusBadge status={groupStatus} />
           <h3 className="font-semibold text-zinc-100 text-sm">{name}</h3>
+          {port ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); window.open(serviceUrl, '_blank', 'noopener,noreferrer'); }}
+              className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors"
+              title={`Open ${serviceUrl}`}
+            >
+              :{port}
+            </button>
+          ) : (
+            <span className="text-[10px] text-zinc-600">No port</span>
+          )}
           {isCluster && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
               x{instances.length}
