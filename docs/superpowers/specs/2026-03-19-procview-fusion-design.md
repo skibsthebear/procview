@@ -237,8 +237,18 @@ ACTION: { type: 'ACTION', id: '...', source: 'pm2', processId: 'pm2:myapp', acti
 SUBSCRIBE_LOGS: { type: 'SUBSCRIBE_LOGS', source: 'pm2', processId: 'pm2:myapp' }
 UNSUBSCRIBE_LOGS: { type: 'UNSUBSCRIBE_LOGS', source: 'pm2', processId: 'pm2:myapp' }
 
-// NEW — allowlist changes from UI
-UPDATE_SETTINGS: { type: 'UPDATE_SETTINGS', id: '...', allowlist: { processNames: [...], portRanges: [...] } }
+// NEW — settings mutations from UI (each field is optional; include only what's changing)
+UPDATE_SETTINGS: {
+  type: 'UPDATE_SETTINGS',
+  id: '...',
+  allowlist?: { processNames: [...], portRanges: [...] },  // replace full allowlist
+  hide?: string,                  // processId to hide
+  unhide?: string,                // processId to unhide
+  setCustomName?: { processId: string, name: string },     // rename a process
+  removeCustomName?: string,      // processId to remove custom name
+  setNote?: { processId: string, note: string },           // add/update a note
+  removeNote?: string,            // processId to remove note
+}
 ```
 
 **Log subscription key:** The server-side `logSubscriptions` map uses composite keys: `Map<ws, Set<"source:processId">>`. This prevents collisions when the same name exists in multiple sources.
