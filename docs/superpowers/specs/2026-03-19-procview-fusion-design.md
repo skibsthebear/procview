@@ -141,7 +141,7 @@ Each collector implements:
   connect()    → Promise<void>,       // initialize
   disconnect() → Promise<void>,       // cleanup
   scan()       → Promise<Process[]>,  // return normalized process objects
-  executeAction(processId, action) → Promise<{success, error?}>,
+  executeAction(processId, action) → Promise<{success, error?}>,  // note: source is NOT passed here — the registry routes by source before calling the collector
   getLogs(processId, lines)        → Promise<{out, err}>,
   tailLogs(processId, callback)    → Promise<void>,  // async — setup may hit daemon/API
   stopTailing(processId)           → void,
@@ -220,6 +220,9 @@ COLLECTOR_STATUS: {
     system: { available: true, lastScan: 1710843180000 }
   }
 }
+
+// NEW — settings operation result (correlates with UPDATE_SETTINGS via id)
+SETTINGS_RESULT: { type: 'SETTINGS_RESULT', id: '...', success: true, error?: string }
 ```
 
 ### Client → Server
@@ -241,6 +244,20 @@ UPDATE_SETTINGS: { type: 'UPDATE_SETTINGS', id: '...', allowlist: { processNames
 **Log subscription key:** The server-side `logSubscriptions` map uses composite keys: `Map<ws, Set<"source:processId">>`. This prevents collisions when the same name exists in multiple sources.
 
 **`UPDATE_SETTINGS` acknowledgment:** Server responds with `SETTINGS_RESULT: { type: 'SETTINGS_RESULT', id: '...', success: true, error?: string }` following the same correlation ID pattern as `ACTION` / `ACTION_RESULT`.
+
+### REST Endpoint for Settings
+
+The WebSocket protocol handles real-time data and mutations. For the initial settings load on page mount, a REST GET endpoint is simpler and avoids request-response over WebSocket:
+
+```
+GET /api/settings → {
+  allowlist: [{ id, type, value, enabled }],
+  hidden: ["pm2:myapp", "docker:abc123"],
+  customNames: { "pm2:myapp": "My App", "docker:abc123": "Redis Cache" }
+}
+```
+
+This is served directly from `server.js` as a simple Express-style route handler on the existing HTTP server (the custom server already handles HTTP requests before passing to Next.js). `use-settings.js` calls `fetch('/api/settings')` on mount to hydrate the client-side state. Mutations go through `UPDATE_SETTINGS` over WebSocket for consistency with the rest of the protocol.
 
 ### Valid Actions Per Source
 
