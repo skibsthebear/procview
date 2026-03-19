@@ -6,6 +6,8 @@ Your local command center for every running process. PM2 apps, Docker containers
 ![Next.js](https://img.shields.io/badge/Next.js-14-000?logo=next.js)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
+![Procview Dashboard](docs/screenshots/dashboard.png)
+
 ## Why Procview?
 
 If you're running a local dev stack, you probably have PM2 managing some services, Docker running databases or infra, and a few random `node` or `python` processes listening on ports. Procview sees all of them in one place — no more juggling `pm2 list`, `docker ps`, and `ss -tlnp` across terminal tabs.
@@ -21,6 +23,9 @@ If you're running a local dev stack, you probably have PM2 managing some service
 - **Per-Process Settings** — rename processes, add notes, hide the ones you don't care about
 - **SQLite Persistence** — settings survive restarts
 - **Graceful Degradation** — each source collector is independent; if Docker isn't running, PM2 and system processes still work fine
+- **Live Log Viewer** — split stdout/stderr panes with auto-scroll pinning
+
+![Log Viewer](docs/screenshots/log-viewer.png)
 
 ## Quick Start
 
