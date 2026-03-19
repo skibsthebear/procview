@@ -1,104 +1,96 @@
-# PM2 UI 🌐
+# Procview
 
-Modern responsive dashboard for managing PM2 processes with Node. 
-Built with:
-* Next.js
-* TailwindCSS
-* HeadlessUI
-  
-![dashboard](https://github.com/thenickygee/pm2-ui/assets/75292383/dff40b00-4280-43c8-98e5-68bf6c88bd4c)
+Your local command center for every running process. PM2 apps, Docker containers, dev servers on ports — all in one dashboard, all in real time.
 
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-14-000?logo=next.js)
+![License](https://img.shields.io/badge/License-MIT-blue)
 
-## 📚 Table of Contents 
+## Why Procview?
 
-- [Getting Started](#getting-started)
-- [Features](#features)
-- [Login Credentials](#login-credentials)
-- [Learn More](#learn-more)
-- [Deploy on Vercel](#deploy-on-vercel)
+If you're running a local dev stack, you probably have PM2 managing some services, Docker running databases or infra, and a few random `node` or `python` processes listening on ports. Procview sees all of them in one place — no more juggling `pm2 list`, `docker ps`, and `ss -tlnp` across terminal tabs.
 
-## 🚀 Getting Started
+## Features
 
-To start an application with PM2, run:
+- **PM2 Processes** — start, stop, restart, reload, delete, live log streaming
+- **Docker Containers** — start, stop, restart, live log streaming
+- **System Processes** — see anything listening on a port, kill it
+- **Real-time Updates** — WebSocket-powered, sub-second process list refresh
+- **Search & Filter** — by name, status, or source (PM2 / Docker / System)
+- **Click-to-Open** — click a process card to open its port in a new tab
+- **Per-Process Settings** — rename processes, add notes, hide the ones you don't care about
+- **SQLite Persistence** — settings survive restarts
+- **Graceful Degradation** — each source collector is independent; if Docker isn't running, PM2 and system processes still work fine
 
-```bash
-pm2 start 'npm run dev' -i <instances> --name <name>
-```
-
-## 🖥️ Development Server
-
-Run the development server:
+## Quick Start
 
 ```bash
-npm run dev
-# or
+git clone https://github.com/skibsthebear/procview.git
+cd procview
+yarn install
 yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) (or the port your app starts on) to view it in your browser.
+Open [http://localhost:7829](http://localhost:7829).
 
-## 🔐 Login Credentials
+### PowerShell (Windows)
 
-- Username: `admin`
-- Password: `admin`
-  
-![auth](https://github.com/thenickygee/pm2-ui/assets/75292383/10216dc1-c8c7-4c1d-bc67-ec59fb6c4375)
+```powershell
+.\start.ps1            # Production mode with rebuild
+.\start.ps1 -Dev       # Dev mode with hot-reload
+.\start.ps1 -Port 3000 # Custom port
+```
 
+## Requirements
 
-> **Note:** The login redirect only works if your app is on localhost:3000.
+- **Node.js 18+**
+- **PM2** (optional) — install globally with `npm i -g pm2` to manage PM2 processes
+- **Docker Desktop** (optional) — for Docker container management
 
+None of the optional dependencies are required. Procview gracefully skips any source that isn't available.
 
+## Configuration
 
-# ✨ Features 
+Create a `.env.local` file or set environment variables:
 
-## 📊 Process Data
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `7829` | Server port |
+| `PM2_POLL_INTERVAL` | `7829` | PM2 polling interval (ms) |
+| `DOCKER_POLL_INTERVAL` | `10000` | Docker polling interval (ms) |
+| `SYSTEM_POLL_INTERVAL` | `30000` | System process polling interval (ms) |
+| `COLLECTOR_RETRY_INTERVAL` | `60000` | Retry interval for failed collectors (ms) |
+| `COLLECTOR_MAX_FAILURES` | `3` | Failures before a collector is marked degraded |
+| `LOG_LINES` | `200` | Initial log lines to load |
+| `DATABASE_PATH` | `./data/procview.db` | SQLite database path |
 
-- CPU Usage (%)
-- Memory Usage (MB)
-- Uptime (d, h, m, s)
-- Process ID (PID)
-![closeup-process](https://github.com/thenickygee/pm2-ui/assets/75292383/5745585c-f1d8-489a-aa3f-e8013dfee682)
+## Architecture
 
+Next.js 14 with App Router and a custom server (`server.js`) that runs HTTP and WebSocket on a single port. Three independent collectors poll PM2, Docker, and system processes on their own intervals. The collector registry merges results into a unified process list and broadcasts diffs over WebSocket to all connected clients.
 
-## ⚙️ Process Actions
+```
+Browser ←── WebSocket ──→ server.js
+                            ├── PM2 Collector (pm2 daemon)
+                            ├── Docker Collector (dockerode)
+                            ├── System Collector (ss/netstat)
+                            └── SQLite (settings persistence)
+```
 
-- Start
-- Stop
-- Restart
-- Reload
-![actions](https://github.com/thenickygee/pm2-ui/assets/75292383/a04f4482-a010-4d3c-afd4-70bce0256d6a)
+## Commands
 
-## 📜 Process Logs
+| Command | Description |
+|---|---|
+| `yarn dev` | Dev server with file watching |
+| `yarn build` | Production build |
+| `yarn start` | Production server |
+| `yarn lint` | ESLint |
+| `yarn test` | Run tests (Vitest) |
+| `yarn test:watch` | Watch mode tests |
 
-- Standard input & output
-![logs](https://github.com/thenickygee/pm2-ui/assets/75292383/91821ca1-5e96-462e-91ad-f6e28a689201)
+## License
 
+MIT — see [LICENSE](LICENSE).
 
-## 🔍 Process Filters
+## Attribution
 
-- By name
-- By status: online, error, stopped
-![filter](https://github.com/thenickygee/pm2-ui/assets/75292383/981b9a3e-d5a7-403c-9972-5a33c9b1c407)
-
-
-> **Note:** The `.env.local` file is included in version control for auth purposes.
-
-
-
-## 📖 Learn More
-- [PM2 Docs](https://pm2.keymetrics.io/docs/usage/quick-start/) - PM2 Offical Documents.
-- [Next.js Documentation](https://nextjs.org/docs) - Features and API.
-- [Learn Next.js](https://nextjs.org/learn) - Interactive tutorial.
-- [Next.js GitHub Repository](https://github.com/vercel/next.js/) - Feedback and contributions.
-  This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) for font optimization.
-
-## 🚢 Deploy on Vercel
-
-Deploy your Next.js app easily using the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme).
-
-## 🤝 Contributing
-Contributions, issues, and feature requests are welcome! Feel free to check [issues page](#).
+Originally inspired by [thenickygee/pm2-ui](https://github.com/thenickygee/pm2-ui). Substantially rewritten and expanded by [Sakib Rahman](https://github.com/skibsthebear).

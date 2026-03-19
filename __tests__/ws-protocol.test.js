@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MessageType, VALID_ACTIONS, createMessage, parseMessage } from '../src/lib/ws-protocol';
+import { MessageType, VALID_ACTIONS, VALID_ACTIONS_BY_SOURCE, createMessage, parseMessage } from '../src/lib/ws-protocol';
 
 describe('ws-protocol', () => {
   describe('MessageType', () => {
@@ -41,6 +41,34 @@ describe('ws-protocol', () => {
 
     it('returns null for invalid JSON', () => {
       expect(parseMessage('not json')).toBeNull();
+    });
+  });
+
+  describe('new message types', () => {
+    it('has COLLECTOR_STATUS server-to-client type', () => {
+      expect(MessageType.COLLECTOR_STATUS).toBe('COLLECTOR_STATUS');
+    });
+
+    it('has SETTINGS_RESULT server-to-client type', () => {
+      expect(MessageType.SETTINGS_RESULT).toBe('SETTINGS_RESULT');
+    });
+
+    it('has UPDATE_SETTINGS client-to-server type', () => {
+      expect(MessageType.UPDATE_SETTINGS).toBe('UPDATE_SETTINGS');
+    });
+  });
+
+  describe('VALID_ACTIONS_BY_SOURCE', () => {
+    it('has PM2 actions', () => {
+      expect(VALID_ACTIONS_BY_SOURCE.pm2).toEqual(['restart', 'stop', 'reload', 'start', 'delete']);
+    });
+
+    it('has Docker actions', () => {
+      expect(VALID_ACTIONS_BY_SOURCE.docker).toEqual(['start', 'stop', 'restart']);
+    });
+
+    it('has System actions', () => {
+      expect(VALID_ACTIONS_BY_SOURCE.system).toEqual(['kill']);
     });
   });
 });

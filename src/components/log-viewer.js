@@ -53,13 +53,13 @@ function LogPanel({ title, lines, pinned, onTogglePin }) {
   );
 }
 
-export default function LogViewer({ appName }) {
-  const { outLines, errLines, connected } = useLogs(appName);
+export default function LogViewer({ source, processId }) {
+  const { outLines, errLines, connected } = useLogs(source, processId);
   const [pinnedOut, setPinnedOut] = useState(true);
   const [pinnedErr, setPinnedErr] = useState(true);
   const [view, setView] = useState('split');
 
-  const decodedName = decodeURIComponent(appName);
+  const decodedName = decodeURIComponent(processId);
 
   return (
     <div className="min-h-screen flex flex-col">

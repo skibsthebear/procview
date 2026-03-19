@@ -19,6 +19,12 @@ const statusConfig = {
     textClass: 'text-zinc-400',
     bgClass: 'bg-zinc-400/10',
   },
+  paused: {
+    label: 'Paused',
+    dotClass: 'bg-amber-400',
+    textClass: 'text-amber-400',
+    bgClass: 'bg-amber-400/10',
+  },
   errored: {
     label: 'Errored',
     dotClass: 'bg-red-400',
