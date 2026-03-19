@@ -92,6 +92,50 @@ Browser ←── WebSocket ──→ server.js
 | `yarn test` | Run tests (Vitest) |
 | `yarn test:watch` | Watch mode tests |
 
+## Running with PM2
+
+Procview includes an `ecosystem.config.js` for running as a PM2-managed process.
+
+```bash
+# Start with default port (7829)
+pm2 start ecosystem.config.js
+
+# Start with a custom port
+PORT=3000 pm2 start ecosystem.config.js
+```
+
+On Windows (PowerShell):
+
+```powershell
+$env:PORT=3000; pm2 start ecosystem.config.js
+```
+
+### Persist across reboots
+
+**Linux / macOS:**
+
+```bash
+pm2 startup
+pm2 save
+```
+
+**Windows:**
+
+```bash
+npm install pm2-windows-startup -g
+pm2-startup install
+pm2 save
+```
+
+### Common commands
+
+| Command | Description |
+|---|---|
+| `pm2 stop procview` | Stop (keeps in PM2 list) |
+| `pm2 restart procview` | Hard restart |
+| `pm2 delete procview` | Stop and remove from list |
+| `pm2 logs procview` | Stream logs |
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
