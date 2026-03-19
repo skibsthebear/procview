@@ -94,7 +94,8 @@ Parses the `ServeConfig` JSON. For each entry in the `Web` handlers map, emits a
 **Serve vs Funnel detection**: A rule is a funnel if `AllowFunnel[hostname:port]` is `true` in the `ServeConfig`. Otherwise it's a serve.
 
 **Action list per rule**:
-- Serves: `['remove', 'upgrade']`
+- HTTPS serves: `['remove', 'upgrade']`
+- TCP serves: `['remove']` only — `upgrade` is omitted because Tailscale Funnel does not support TCP
 - Funnels: `['remove', 'downgrade']`
 - When `auth-needed`: `['login', 'remove']`
 
@@ -102,12 +103,14 @@ Parses the `ServeConfig` JSON. For each entry in the `Web` handlers map, emits a
 
 | Action | CLI Command | Notes |
 |--------|-------------|-------|
-| `remove` | `tailscale serve <externalPort> off` | Removes both serve and funnel |
-| `upgrade` | `tailscale funnel --bg --https=<externalPort> --set-path=<path> <localPort>` | Promotes serve to funnel |
-| `downgrade` | `tailscale funnel <externalPort> off` then `tailscale serve --bg --https=<externalPort> --set-path=<path> <localPort>` | Removes public access, re-adds as private serve |
+| `remove` | HTTPS: `tailscale serve <externalPort> off`; TCP: `tailscale serve --tcp=<externalPort> off` | Removes the entire serve config for that port (which also implicitly removes any funnel on it). Branch on `tsProtocol` from the process object (derivable from the processId prefix `ts:<protocol>:...`). |
+| `upgrade` | `tailscale funnel --bg --https=<externalPort> --set-path=<path> <localPort>` | Promotes serve to funnel. Tailscale's `funnel` command builds on the existing serve config. |
+| `downgrade` | `tailscale funnel <externalPort> off` then verify serve remains | `tailscale funnel <port> off` removes only the public funnel layer, leaving the underlying serve intact. No need to re-add the serve — it was never removed. |
 | `login` | `tailscale up` | Triggers re-authentication |
 | `add-serve` | `tailscale serve --bg <localPort>` | Creation action, uses `params.localPort` |
 | `add-funnel` | `tailscale funnel --bg --https=<funnelPort> --set-path=<path> <localPort>` | Creation action, uses `params.localPort`, `params.funnelPort`, `params.path` |
+
+**Creation actions (`add-serve`, `add-funnel`)**: These use a synthetic `processId` of `"__new__"`. The collector's `executeAction` method checks for creation actions first and routes them to params-based handling, bypassing any process-ID parsing logic. The `"__new__"` value is never parsed as a real process identifier.
 
 All CLI calls use `windowsHide: true`.
 
@@ -200,7 +203,11 @@ The modal needs two pieces of data passed as props:
 1. **`tsHostname`** — The node's full `hostname.tailnet.ts.net` string (for URL previews)
 2. **`tsProcesses`** — Current Tailscale process list (to calculate funnel slot usage and validate against duplicates)
 
-On submit, the modal calls an `onAdd(type, params)` handler which sends an `ACTION` WebSocket message:
+**How `tsHostname` reaches the client**: Extend the `COLLECTOR_STATUS` message to include an optional `metadata` field per collector. The collector registry's `getCollectorStatus()` method will call an optional `getMetadata()` method on each collector (returns `{}` by default). The Tailscale collector implements `getMetadata()` returning `{ hostname: 'sakib-pc.mynet.ts.net' }`. The dashboard receives this via the existing `COLLECTOR_STATUS` broadcast and passes it to the modal. This avoids polluting the process objects and works even when there are zero Tailscale rules (empty state — the user still needs the hostname for the URL preview in the "Add" modal).
+
+**Client-side wiring for `onAdd`**: Dashboard defines a `handleAddTailscaleRule(type, params)` function that sends the `ACTION` message directly via the shared WebSocket ref from `useProcesses` (bypassing `executeAction`, which doesn't support `params`). Dashboard passes this handler as `onAddTailscaleRule` prop to `FilterBar`, which forwards it to `TailscaleModal`. This is the same prop-threading pattern used for `onSelectOnly`/`onSelectAll`.
+
+On submit, the modal calls `onAddTailscaleRule(type, params)` which sends an `ACTION` WebSocket message:
 
 ```json
 {
@@ -255,6 +262,7 @@ Add to `SOURCE_FILTERS`:
 
 Add a `[+ TS]` button after the filter buttons:
 - Only renders when the Tailscale collector is registered and not in error state
+- Dashboard must pass `collectorStatus` (or a derived `tailscaleAvailable` boolean) to `FilterBar` as a new prop for this visibility check
 - Opens the Add Tailscale Rule modal on click
 - Styled as a small action button, not a filter toggle
 
@@ -271,7 +279,7 @@ Add a `[+ TS]` button after the filter buttons:
 
 ### Process Actions (`process-actions.js`)
 
-Add new action entries to `ACTION_CONFIG`:
+Tailscale actions do not use the `showWhen` gate (which maps to `online`/`offline` status). Instead, they follow the `delete` pattern: they render unconditionally when present in the process's `actions` array, bypassing `ACTION_CONFIG` entirely. Each Tailscale action is handled in its own dedicated JSX block in `ProcessActions`, gated only by `actions.includes('actionName')`.
 
 | Action | Label | Icon | Color | Confirm |
 |--------|-------|------|-------|---------|
@@ -317,9 +325,11 @@ registry.routeAction(msg.source, msg.processId, msg.action, msg.params)
 
 `TAILSCALE_POLL_INTERVAL` — Poll interval in ms (default: `15000`).
 
-### Deduplication
+### Deduplication & `getAll()` Source Bucketing
 
-No changes needed. Tailscale rules are routing config, not processes — they don't overlap with system/PM2/Docker processes by PID.
+Tailscale rules are routing config, not processes — they don't overlap with system/PM2/Docker processes by PID. However, `collector-registry.js` `getAll()` hard-codes source bucketing for only `pm2`, `docker`, and `system`. Processes with any other `source` value are silently dropped. This must be fixed:
+
+Refactor `getAll()` to pass through any source that doesn't participate in PID deduplication. The PID dedup logic (which filters out system processes whose PIDs are claimed by PM2/Docker) only involves those three sources. Tailscale processes (which have `pid: null`) should be appended directly to the merged list without going through the dedup pipeline. The simplest fix is to add an `else` clause that pushes unrecognized sources straight to `merged`.
 
 ---
 
@@ -343,7 +353,7 @@ Uses the `_deps` pattern (same as docker-collector and system-collector tests).
 | `scan()` daemon stopped | Status set to `stopped` |
 | `executeAction` remove | Calls `tailscale serve <port> off` |
 | `executeAction` upgrade | Calls `tailscale funnel --bg --https=<port> ...` |
-| `executeAction` downgrade | Calls `tailscale funnel <port> off` then `tailscale serve --bg ...` |
+| `executeAction` downgrade | Calls `tailscale funnel <port> off` only; verifies serve remains intact (no re-add needed) |
 | `executeAction` login | Calls `tailscale up` |
 | `executeAction` add-serve | Calls `tailscale serve --bg <localPort>` with params |
 | `executeAction` add-funnel | Calls `tailscale funnel --bg --https=<port> --set-path=<path> <localPort>` with params |
@@ -360,11 +370,11 @@ Uses the `_deps` pattern (same as docker-collector and system-collector tests).
 | `src/components/tailscale-modal.js` | **New** — Add Tailscale Rule modal |
 | `__tests__/tailscale-collector.test.js` | **New** — Collector tests |
 | `src/lib/ws-protocol.js` | Add `tailscale` to `VALID_ACTIONS_BY_SOURCE` |
-| `src/lib/collector-registry.js` | Pass `params` through `routeAction` to `executeAction` |
+| `src/lib/collector-registry.js` | Pass `params` through `routeAction`; fix `getAll()` to pass through non-dedup sources; add optional `getMetadata()` call to `getCollectorStatus()` |
 | `server.js` | Register collector, pass `msg.params` in `handleAction` |
 | `src/components/process-card.js` | Add teal badge, Tailscale-specific card rows |
 | `src/components/filter-bar.js` | Add Tailscale filter + `[+ TS]` button |
 | `src/components/dashboard.js` | Add `'tailscale'` to source arrays, pass modal props |
-| `src/components/process-actions.js` | Add `remove`, `upgrade`, `downgrade`, `login` to `ACTION_CONFIG` |
+| `src/components/process-actions.js` | Add dedicated JSX blocks for `remove`, `upgrade`, `downgrade`, `login` (bypasses `ACTION_CONFIG`, follows `delete` pattern) |
 | `src/components/navbar.js` | Add `tailscale` to `SOURCE_LABELS` |
 | `CLAUDE.md` | Document new collector, env var, and Tailscale-specific fields |
