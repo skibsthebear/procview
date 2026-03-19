@@ -28,15 +28,19 @@ function getProcessList() {
     _deps.pm2.list((err, list) => {
       if (err) return reject(err);
       resolve(
-        list.map((proc) => ({
-          name: proc.name,
-          status: proc.pm2_env?.status || 'unknown',
-          cpu: proc.monit?.cpu || 0,
-          memory: Math.round((proc.monit?.memory || 0) / (1024 * 1024) * 100) / 100,
-          uptime: formatUptime(proc.pm2_env?.pm_uptime),
-          pid: proc.pid,
-          instanceId: proc.pm2_env?.NODE_APP_INSTANCE ?? null,
-        }))
+        list.map((proc) => {
+          const p = Number(proc.pm2_env?.PORT);
+          return {
+            name: proc.name,
+            status: proc.pm2_env?.status || 'unknown',
+            cpu: proc.monit?.cpu || 0,
+            memory: Math.round((proc.monit?.memory || 0) / (1024 * 1024) * 100) / 100,
+            uptime: formatUptime(proc.pm2_env?.pm_uptime),
+            pid: proc.pid,
+            instanceId: proc.pm2_env?.NODE_APP_INSTANCE ?? null,
+            port: Number.isFinite(p) && p > 0 ? p : null,
+          };
+        })
       );
     });
   });

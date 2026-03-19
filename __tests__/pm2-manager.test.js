@@ -82,6 +82,52 @@ describe('pm2-manager', () => {
     });
   });
 
+  describe('port extraction', () => {
+    function mockProcessWithPort(portValue) {
+      return {
+        name: 'api',
+        pm2_env: {
+          status: 'online',
+          pm_uptime: Date.now() - 60000,
+          NODE_APP_INSTANCE: 0,
+          ...(portValue !== undefined ? { PORT: portValue } : {}),
+        },
+        monit: { cpu: 5, memory: 52428800 },
+        pid: 9999,
+      };
+    }
+
+    it('extracts numeric PORT as a number', async () => {
+      mockPm2.list = vi.fn((cb) => cb(null, [mockProcessWithPort('3000')]));
+      const list = await pm2Manager.getProcessList();
+      expect(list[0].port).toBe(3000);
+    });
+
+    it('returns null when PORT is absent', async () => {
+      mockPm2.list = vi.fn((cb) => cb(null, [mockProcessWithPort(undefined)]));
+      const list = await pm2Manager.getProcessList();
+      expect(list[0].port).toBeNull();
+    });
+
+    it('returns null when PORT is non-numeric', async () => {
+      mockPm2.list = vi.fn((cb) => cb(null, [mockProcessWithPort('abc')]));
+      const list = await pm2Manager.getProcessList();
+      expect(list[0].port).toBeNull();
+    });
+
+    it('returns null when PORT is zero', async () => {
+      mockPm2.list = vi.fn((cb) => cb(null, [mockProcessWithPort('0')]));
+      const list = await pm2Manager.getProcessList();
+      expect(list[0].port).toBeNull();
+    });
+
+    it('returns null when PORT is negative', async () => {
+      mockPm2.list = vi.fn((cb) => cb(null, [mockProcessWithPort('-1')]));
+      const list = await pm2Manager.getProcessList();
+      expect(list[0].port).toBeNull();
+    });
+  });
+
   describe('executeAction', () => {
     it('executes a valid action', async () => {
       await pm2Manager.executeAction('web', 'restart');
