@@ -102,6 +102,34 @@ Every source produces process objects normalized to this shared shape:
 - `ports` is an array because Docker containers can expose multiple ports.
 - Nullable fields mean the UI gracefully hides metrics that don't apply.
 
+**`groupId` semantics:** Used for within-source grouping on the dashboard.
+- PM2: `groupId` = process name. Multiple cluster instances with the same name collapse into one expandable card (existing behavior).
+- Docker: `groupId` = `composeProject` if present, otherwise `containerId`. Compose services within the same project are grouped under a collapsible project header. Standalone containers are individual cards.
+- System: `groupId` = null. Each system process is always an individual card (no grouping).
+
+The dashboard groups by `(source, groupId)`. Within each source section, processes sharing a `groupId` are rendered as one collapsible group.
+
+**Status normalization mapping:**
+
+| Source | Raw Status | Normalized |
+|---|---|---|
+| PM2 | `online` | `online` |
+| PM2 | `stopping` | `stopping` |
+| PM2 | `stopped` | `stopped` |
+| PM2 | `errored` | `errored` |
+| PM2 | `launching` | `launching` |
+| PM2 | `one-launch-status` | `launching` |
+| Docker | `running` | `online` |
+| Docker | `exited` | `stopped` |
+| Docker | `paused` | `paused` |
+| Docker | `created` | `stopped` |
+| Docker | `restarting` | `launching` |
+| Docker | `removing` | `stopping` |
+| Docker | `dead` | `errored` |
+| System | (always listening) | `online` |
+
+**System process ID strategy:** System IDs (`sys:port:processName`) are considered semi-stable. The port+name combination is stable as long as the same process is running. Notes and custom names on system IDs are best-effort — they persist as long as the same process name binds the same port. If a different process takes the port, the old note becomes orphaned in SQLite (harmless). A future cleanup task can prune orphaned entries, but this is not required for v1.
+
 ## Collector Interface
 
 Each collector implements:
@@ -115,7 +143,7 @@ Each collector implements:
   scan()       → Promise<Process[]>,  // return normalized process objects
   executeAction(processId, action) → Promise<{success, error?}>,
   getLogs(processId, lines)        → Promise<{out, err}>,
-  tailLogs(processId, callback)    → void,
+  tailLogs(processId, callback)    → Promise<void>,  // async — setup may hit daemon/API
   stopTailing(processId)           → void,
 }
 ```
@@ -128,7 +156,9 @@ Thin wrapper around existing `pm2-manager.js`. Calls `getProcessList()` and maps
 
 ### Docker Collector
 
-Uses `dockerode`. Auto-detects Docker socket on `connect()` (named pipe on Windows, Unix socket on macOS). `scan()` calls `docker.listContainers({all: true})` then `container.inspect()` for port mappings and `container.stats({stream: false})` for CPU/memory. Actions map to `container.start()`, `container.stop()`, `container.restart()`. Logs via `container.logs({follow: true, stdout: true, stderr: true})`.
+Uses `dockerode`. Auto-detects Docker socket on `connect()` (named pipe on Windows, Unix socket on macOS). `scan()` calls `docker.listContainers({all: true})` then `container.inspect()` for port mappings. Actions map to `container.start()`, `container.stop()`, `container.restart()`. Logs via `container.logs({follow: true, stdout: true, stderr: true})`.
+
+**Docker CPU/memory is out of scope for v1.** The `cpu` and `memory` fields will be `null` for Docker processes. `container.stats({stream: false})` has a well-known latency problem — each call opens a stats stream, waits for two data points, then closes, taking ~1s per container. With N containers this serializes to N seconds, easily exceeding the poll interval. A future version can add metrics via a separate background stats stream or by using the Docker events API, but v1 ships without them.
 
 ### System Collector
 
@@ -147,7 +177,11 @@ class CollectorRegistry {
 }
 ```
 
-**Deduplication:** Docker > PM2 > System priority. If a system port's PID matches a Docker container's PID, the system entry is dropped. Same for PM2 processes with ports that also show in the system scan.
+**Deduplication:** Docker > PM2 > System priority. Uses PID-based matching:
+1. After all collectors scan, build a Set of all PIDs from Docker results (including all container PIDs from `container.top()`).
+2. Build a Set of all PIDs from PM2 results (including all cluster instance PIDs).
+3. For each system entry, if its PID is in the Docker or PM2 PID sets, drop it.
+4. This is PID-based, not port-based — avoids false matches during process restarts where old and new processes briefly share the same port.
 
 **Poll cadences:**
 - PM2: ~8s (`PM2_POLL_INTERVAL`, default 7829)
@@ -174,8 +208,8 @@ PROCESS_LIST: {
 // Existing — unchanged
 ACTION_RESULT: { type: 'ACTION_RESULT', id: '...', success: true }
 
-// Existing — now includes source
-LOG_LINES: { type: 'LOG_LINES', source: 'pm2', appName: 'myapp', stream: 'out', lines: [...] }
+// Existing — now includes source and processId
+LOG_LINES: { type: 'LOG_LINES', source: 'pm2', processId: 'pm2:myapp', stream: 'out', lines: [...] }
 
 // NEW — collector availability
 COLLECTOR_STATUS: {
@@ -191,16 +225,22 @@ COLLECTOR_STATUS: {
 ### Client → Server
 
 ```js
-// Existing — now requires source
-ACTION: { type: 'ACTION', id: '...', source: 'pm2', appName: 'myapp', action: 'restart' }
+// Existing — now uses processId as canonical routing key
+// processId is the unified ID (e.g. "pm2:myapp", "docker:abc123", "sys:5173:node")
+// source is included explicitly for fast routing without parsing the ID
+ACTION: { type: 'ACTION', id: '...', source: 'pm2', processId: 'pm2:myapp', action: 'restart' }
 
-// Existing — now requires source
-SUBSCRIBE_LOGS: { type: 'SUBSCRIBE_LOGS', source: 'pm2', appName: 'myapp' }
-UNSUBSCRIBE_LOGS: { type: 'UNSUBSCRIBE_LOGS', source: 'pm2', appName: 'myapp' }
+// Existing — now requires source + processId
+SUBSCRIBE_LOGS: { type: 'SUBSCRIBE_LOGS', source: 'pm2', processId: 'pm2:myapp' }
+UNSUBSCRIBE_LOGS: { type: 'UNSUBSCRIBE_LOGS', source: 'pm2', processId: 'pm2:myapp' }
 
 // NEW — allowlist changes from UI
-UPDATE_SETTINGS: { type: 'UPDATE_SETTINGS', allowlist: { processNames: [...], portRanges: [...] } }
+UPDATE_SETTINGS: { type: 'UPDATE_SETTINGS', id: '...', allowlist: { processNames: [...], portRanges: [...] } }
 ```
+
+**Log subscription key:** The server-side `logSubscriptions` map uses composite keys: `Map<ws, Set<"source:processId">>`. This prevents collisions when the same name exists in multiple sources.
+
+**`UPDATE_SETTINGS` acknowledgment:** Server responds with `SETTINGS_RESULT: { type: 'SETTINGS_RESULT', id: '...', success: true, error?: string }` following the same correlation ID pattern as `ACTION` / `ACTION_RESULT`.
 
 ### Valid Actions Per Source
 
@@ -315,6 +355,10 @@ src/hooks/
 └── use-settings.js      # NEW: reads/writes allowlist, hidden, custom names
 ```
 
+**`executeAction` signature change:** The current `executeAction(appName, action)` becomes `executeAction(source, processId, action)`. The hook includes `source` in the `ACTION` message. Process cards pass their `source` and `id` to the action handler.
+
+**Hidden process filtering:** Client-side. The server always sends the full process list (including hidden processes). The `use-settings.js` hook fetches the hidden set from the server on mount. The dashboard filters them out locally. The `HiddenProcessesDrawer` toggles a flag to show/hide them. This keeps the server stateless with respect to per-client view preferences and avoids per-connection hidden-set tracking.
+
 ### Component Changes Summary
 
 | Component | Status |
@@ -352,7 +396,7 @@ Each collector is independent. One failing doesn't take down the others.
 | Source starts mid-session | Registry retries, auto-recovers, broadcasts updated status. |
 | Slow system scan | Runs on its own interval. Doesn't block other sources. |
 | Action fails | ACTION_RESULT with error. Toast shown. No retry. |
-| WebSocket disconnect | Exponential backoff reconnection. Server sends cached state on reconnect. |
+| WebSocket disconnect | Exponential backoff reconnection. Server sends cached `PROCESS_LIST` and current `COLLECTOR_STATUS` on new connection. |
 | SQLite corrupt | Falls back to in-memory defaults. Dashboard works, no persistence. |
 
 ## Testing
@@ -407,9 +451,11 @@ DATABASE_PATH=./data/procview.db
 ### New Dependencies
 
 ```
-better-sqlite3    # SQLite driver
+better-sqlite3    # SQLite driver (synchronous, native addon)
 dockerode          # Docker Engine API client
 ```
+
+**Note on `better-sqlite3`:** This is a native Node.js addon compiled via `node-gyp`. On Windows, it requires Visual C++ Build Tools (typically installed with "Desktop development with C++" workload in Visual Studio). On macOS, it requires Xcode Command Line Tools. If native compilation is problematic, `sql.js` (pure JS SQLite via WASM) is a fallback option with slightly different API but no native build requirement.
 
 ## Migration
 
