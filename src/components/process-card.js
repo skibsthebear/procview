@@ -78,6 +78,7 @@ export default function ProcessCard({ name, instances, onAction }) {
             href={`/logs/${encodeURIComponent(name)}`}
             className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-white/10 transition-colors"
             title="View Logs"
+            onClick={(e) => e.stopPropagation()}
           >
             <FontAwesomeIcon icon={faTerminal} className="text-xs" />
           </Link>
@@ -86,7 +87,7 @@ export default function ProcessCard({ name, instances, onAction }) {
           )}
           {isCluster && (
             <button
-              onClick={() => setExpanded(!expanded)}
+              onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
               className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-white/10 transition-colors"
             >
               <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} className="text-xs" />

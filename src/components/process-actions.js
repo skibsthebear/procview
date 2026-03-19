@@ -7,14 +7,14 @@ import {
   faPlay,
   faStop,
   faArrowsRotate,
-  faRotate,
+  faPowerOff,
   faTrash,
 } from '@fortawesome/free-solid-svg-icons';
 import { toast } from 'react-toastify';
 
 const ACTION_BUTTONS = [
-  { action: 'reload', icon: faRotate, label: 'Reload', showWhen: 'online' },
-  { action: 'restart', icon: faArrowsRotate, label: 'Restart', showWhen: 'online' },
+  { action: 'reload', icon: faArrowsRotate, label: 'Reload', showWhen: 'online' },
+  { action: 'restart', icon: faPowerOff, label: 'Restart', showWhen: 'online' },
   { action: 'stop', icon: faStop, label: 'Stop', showWhen: 'online' },
   { action: 'start', icon: faPlay, label: 'Start', showWhen: 'offline' },
 ];
@@ -41,7 +41,7 @@ export default function ProcessActions({ appName, status, onAction }) {
   );
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
       {visibleActions.map(({ action, icon, label }) => (
         <button
           key={action}
