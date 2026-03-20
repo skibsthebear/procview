@@ -101,7 +101,9 @@ export default function ProcessCard({ displayName, processes, onAction, onHide, 
 
   // Collect all unique ports across instances
   const allPorts = [...new Set(processes.flatMap((p) => p.ports || []))];
-  const serviceUrl = allPorts.length > 0 ? `http://localhost:${allPorts[0]}` : null;
+  const serviceUrl = source === 'tailscale' && primary.tsTailnetUrl
+    ? primary.tsTailnetUrl
+    : allPorts.length > 0 ? `http://localhost:${allPorts[0]}` : null;
 
   function handleCardClick() {
     if (serviceUrl) window.open(serviceUrl, '_blank', 'noopener,noreferrer');
@@ -239,7 +241,75 @@ export default function ProcessCard({ displayName, processes, onAction, onHide, 
         </div>
       </div>
 
-      {!isCluster && (
+      {/* Tailscale-specific info */}
+      {source === 'tailscale' && !isCluster && (
+        <div className="flex flex-col gap-1.5 px-1 text-xs">
+          {/* Type label */}
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-500">Type:</span>
+            <span className={primary.tsType === 'funnel'
+              ? 'text-orange-400 font-medium'
+              : 'text-teal-400 font-medium'
+            }>
+              {primary.tsType === 'funnel' ? 'Funnel (Public)' : 'Serve (Private)'}
+            </span>
+          </div>
+
+          {/* Local target */}
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-500">Target:</span>
+            <span className="text-zinc-300 font-mono">{primary.tsLocalTarget}</span>
+          </div>
+
+          {/* Tailnet URL */}
+          {primary.tsTailnetUrl && (
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500">Tailnet:</span>
+              <a
+                href={primary.tsTailnetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-teal-400 hover:text-teal-300 font-mono truncate transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {primary.tsTailnetUrl}
+              </a>
+            </div>
+          )}
+
+          {/* Public URL (funnel only) */}
+          {primary.tsPublicUrl && (
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500">Public:</span>
+              <a
+                href={primary.tsPublicUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-orange-400 hover:text-orange-300 font-mono truncate transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {primary.tsPublicUrl}
+              </a>
+            </div>
+          )}
+
+          {/* Funnel warning banner */}
+          {primary.tsType === 'funnel' && (
+            <div className="px-2 py-1.5 rounded bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[11px]">
+              ⚠ Publicly accessible from the internet
+            </div>
+          )}
+
+          {/* Auth warning */}
+          {primary.status === 'auth-needed' && (
+            <div className="px-2 py-1.5 rounded bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[11px]">
+              Tailscale needs re-authentication. Run &apos;tailscale up&apos; or click Login below.
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isCluster && source !== 'tailscale' && (
         <div className="flex gap-4 px-1">
           <Metric label="CPU" value={primary.cpu} unit="%" colorClass={getCpuColor(primary.cpu)} />
           <Metric label="MEM" value={primary.memory} unit="MB" colorClass={getMemoryColor(primary.memory)} />
