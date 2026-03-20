@@ -8,6 +8,7 @@ const CollectorRegistry = require('./src/lib/collector-registry');
 const Pm2Collector = require('./src/lib/collectors/pm2-collector');
 const DockerCollector = require('./src/lib/collectors/docker-collector');
 const SystemCollector = require('./src/lib/collectors/system-collector');
+const TailscaleCollector = require('./src/lib/collectors/tailscale-collector');
 const { MessageType, createMessage, parseMessage, VALID_ACTIONS_BY_SOURCE } = require('./src/lib/ws-protocol');
 
 const dev = process.env.NODE_ENV !== 'production';
@@ -67,7 +68,7 @@ function handleClientMessage(ws, raw, wss) {
 }
 
 async function handleAction(ws, msg, wss) {
-  const { id, source, processId, action } = msg;
+  const { id, source, processId, action, params } = msg;
 
   // Validate action against source
   const validActions = VALID_ACTIONS_BY_SOURCE[source];
@@ -77,7 +78,7 @@ async function handleAction(ws, msg, wss) {
   }
 
   try {
-    const result = await registry.routeAction(source, processId, action);
+    const result = await registry.routeAction(source, processId, action, params);
     ws.send(createMessage(MessageType.ACTION_RESULT, { id, ...result }));
     // Trigger immediate poll to reflect state change
     setTimeout(() => broadcastProcessList(wss), 500);
@@ -227,6 +228,7 @@ app.prepare().then(async () => {
   registry.register(new Pm2Collector(pm2Manager));
   registry.register(new DockerCollector());
   registry.register(new SystemCollector(db));
+  registry.register(new TailscaleCollector());
 
   // Connect all collectors (graceful — failed ones marked unavailable)
   await registry.connectAll();

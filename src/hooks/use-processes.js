@@ -106,7 +106,7 @@ export function useProcesses() {
     };
   }, [connectWs]);
 
-  const executeAction = useCallback((source, processId, action) => {
+  const executeAction = useCallback((source, processId, action, params) => {
     return new Promise((resolve, reject) => {
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -126,6 +126,7 @@ export function useProcesses() {
         source,
         processId,
         action,
+        ...(params && { params }),
       }));
     });
   }, []);
