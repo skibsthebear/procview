@@ -19,6 +19,7 @@ const VALID_ACTIONS_BY_SOURCE = {
   pm2: ['restart', 'stop', 'reload', 'start', 'delete'],
   docker: ['start', 'stop', 'restart'],
   system: ['kill'],
+  tailscale: ['remove', 'upgrade', 'downgrade', 'login', 'add-serve', 'add-funnel'],
 };
 
 function createMessage(type, payload = {}) {

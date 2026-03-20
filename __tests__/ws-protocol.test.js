@@ -70,5 +70,11 @@ describe('ws-protocol', () => {
     it('has System actions', () => {
       expect(VALID_ACTIONS_BY_SOURCE.system).toEqual(['kill']);
     });
+
+    it('has Tailscale actions', () => {
+      expect(VALID_ACTIONS_BY_SOURCE.tailscale).toEqual([
+        'remove', 'upgrade', 'downgrade', 'login', 'add-serve', 'add-funnel',
+      ]);
+    });
   });
 });
