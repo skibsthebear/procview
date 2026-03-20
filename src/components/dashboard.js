@@ -7,10 +7,12 @@ import ProcessCard from './process-card';
 import { useProcesses } from '@/hooks/use-processes';
 import { useSettings } from '@/hooks/use-settings';
 import SettingsModal from './settings-modal';
+import TailscaleModal from './tailscale-modal';
+import { toast } from 'react-toastify';
 
-const SOURCE_ORDER = ['pm2', 'docker', 'system'];
+const SOURCE_ORDER = ['pm2', 'docker', 'system', 'tailscale'];
 const STATUS_FILTERS = ['online', 'stopped', 'errored'];
-const SOURCE_FILTERS = ['pm2', 'docker', 'system'];
+const SOURCE_FILTERS = ['pm2', 'docker', 'system', 'tailscale'];
 
 export default function Dashboard() {
   const { processes, collectorStatus, connected, connectionState, retryNow, executeAction, sendMessage, registerMessageHandler } = useProcesses();
@@ -20,8 +22,27 @@ export default function Dashboard() {
   } = useSettings(sendMessage, registerMessageHandler);
   const [search, setSearch] = useState('');
   const [statusFilters, setStatusFilters] = useState(['online', 'stopped', 'errored']);
-  const [sourceFilters, setSourceFilters] = useState(['pm2', 'docker', 'system']);
+  const [sourceFilters, setSourceFilters] = useState(['pm2', 'docker', 'system', 'tailscale']);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTailscaleModal, setShowTailscaleModal] = useState(false);
+
+  const tailscaleAvailable = collectorStatus?.tailscale?.available === true;
+  const tsHostname = collectorStatus?.tailscale?.metadata?.hostname || '';
+  const tsProcesses = useMemo(
+    () => processes.filter(p => p.source === 'tailscale'),
+    [processes]
+  );
+
+  async function handleAddTailscaleRule(type, params) {
+    const action = type === 'serve' ? 'add-serve' : 'add-funnel';
+    try {
+      await executeAction('tailscale', '__new__', action, params);
+      toast.success(`Added Tailscale ${type} rule`);
+      setShowTailscaleModal(false);
+    } catch (err) {
+      toast.error(`Failed to add ${type}: ${err.message}`);
+    }
+  }
 
   // Filter out hidden, then group by (source, groupId)
   const visibleProcesses = useMemo(() => {
@@ -61,7 +82,7 @@ export default function Dashboard() {
 
   // Source counts (for filter bar)
   const sourceCounts = useMemo(() => {
-    const c = { pm2: 0, docker: 0, system: 0 };
+    const c = { pm2: 0, docker: 0, system: 0, tailscale: 0 };
     for (const [, group] of groups) {
       c[group.source] = (c[group.source] || 0) + 1;
     }
@@ -138,6 +159,8 @@ export default function Dashboard() {
           onSourceSelectOnly={handleSourceSelectOnly}
           onSourceSelectAll={handleSourceSelectAll}
           sourceCounts={sourceCounts}
+          tailscaleAvailable={tailscaleAvailable}
+          onAddTailscaleRule={() => setShowTailscaleModal(true)}
         />
 
         {visibleProcesses.length === 0 && connected ? (
@@ -196,6 +219,14 @@ export default function Dashboard() {
             onUpdateAllowlist={updateAllowlist}
             onUnhide={unhideProcess}
             onClose={() => setShowSettings(false)}
+          />
+        )}
+        {showTailscaleModal && (
+          <TailscaleModal
+            tsHostname={tsHostname}
+            tsProcesses={tsProcesses}
+            onAdd={handleAddTailscaleRule}
+            onClose={() => setShowTailscaleModal(false)}
           />
         )}
       </main>

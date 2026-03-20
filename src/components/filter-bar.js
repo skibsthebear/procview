@@ -14,12 +14,14 @@ const SOURCE_FILTERS = [
   { key: 'pm2', label: 'PM2', activeClass: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
   { key: 'docker', label: 'Docker', activeClass: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
   { key: 'system', label: 'System', activeClass: 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30' },
+  { key: 'tailscale', label: 'Tailscale', activeClass: 'bg-teal-500/20 text-teal-400 border-teal-500/30' },
 ];
 
 export default function FilterBar({
   search, onSearchChange,
   statusFilters, onStatusToggle, onStatusSelectOnly, onStatusSelectAll, counts,
   sourceFilters, onSourceToggle, onSourceSelectOnly, onSourceSelectAll, sourceCounts,
+  tailscaleAvailable, onAddTailscaleRule,
 }) {
   // Context menu state: { key, type: 'status'|'source', x, y } or null
   const [ctxMenu, setCtxMenu] = useState(null);
@@ -116,6 +118,15 @@ export default function FilterBar({
               </button>
             );
           })}
+          {tailscaleAvailable && onAddTailscaleRule && (
+            <button
+              onClick={onAddTailscaleRule}
+              className="px-2 py-1.5 rounded-lg text-[10px] font-medium border border-teal-500/30 bg-teal-500/10 text-teal-400 hover:bg-teal-500/20 transition-colors"
+              title="Add Tailscale Serve/Funnel rule"
+            >
+              + TS
+            </button>
+          )}
         </div>
       </div>
 
