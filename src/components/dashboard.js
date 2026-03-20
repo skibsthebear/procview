@@ -3,14 +3,14 @@
 import { useState, useMemo } from 'react';
 import Navbar from './navbar';
 import FilterBar from './filter-bar';
-import ProcessCard from './process-card';
+import SourceSection from './source-section';
 import { useProcesses } from '@/hooks/use-processes';
 import { useSettings } from '@/hooks/use-settings';
 import SettingsModal from './settings-modal';
 import TailscaleModal from './tailscale-modal';
 import { toast } from 'react-toastify';
 
-const SOURCE_ORDER = ['pm2', 'docker', 'system', 'tailscale'];
+const SOURCE_TIEBREAK_ORDER = ['pm2', 'docker', 'system', 'tailscale'];
 const STATUS_FILTERS = ['online', 'stopped', 'errored'];
 const SOURCE_FILTERS = ['pm2', 'docker', 'system', 'tailscale'];
 
@@ -25,6 +25,11 @@ export default function Dashboard() {
   const [sourceFilters, setSourceFilters] = useState(['pm2', 'docker', 'system', 'tailscale']);
   const [showSettings, setShowSettings] = useState(false);
   const [showTailscaleModal, setShowTailscaleModal] = useState(false);
+  const [collapsed, setCollapsed] = useState({ pm2: false, docker: false, system: false, tailscale: false });
+
+  function handleToggleSection(source) {
+    setCollapsed(prev => ({ ...prev, [source]: !prev[source] }));
+  }
 
   const tailscaleAvailable = collectorStatus?.tailscale?.available === true;
   const tsHostname = collectorStatus?.tailscale?.metadata?.hostname || '';
@@ -101,14 +106,26 @@ export default function Dashboard() {
       if (!statusFilters.includes(groupStatus)) continue;
       entries.push(group);
     }
-    // Sort: by source order, then by name
-    return entries.sort((a, b) => {
-      const sa = SOURCE_ORDER.indexOf(a.source);
-      const sb = SOURCE_ORDER.indexOf(b.source);
-      if (sa !== sb) return sa - sb;
-      return a.displayName.localeCompare(b.displayName);
-    });
+    return entries.sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [groups, search, statusFilters, sourceFilters]);
+
+  const sourceSections = useMemo(() => {
+    const sectionMap = new Map();
+    for (const group of filtered) {
+      if (!sectionMap.has(group.source)) sectionMap.set(group.source, []);
+      sectionMap.get(group.source).push(group);
+    }
+    return Array.from(sectionMap.entries())
+      .map(([source, groups]) => ({
+        source,
+        groups,
+        totalCount: groups.reduce((n, g) => n + g.processes.length, 0),
+      }))
+      .sort((a, b) => {
+        if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount;
+        return SOURCE_TIEBREAK_ORDER.indexOf(a.source) - SOURCE_TIEBREAK_ORDER.indexOf(b.source);
+      });
+  }, [filtered]);
 
   function handleStatusToggle(key) {
     setStatusFilters((prev) =>
@@ -163,24 +180,26 @@ export default function Dashboard() {
           onAddTailscaleRule={() => setShowTailscaleModal(true)}
         />
 
-        {visibleProcesses.length === 0 && connected ? (
+        {filtered.length === 0 && connected ? (
           <div className="mt-16 text-center">
             <p className="text-zinc-500 text-lg mb-2">No processes found</p>
             <p className="text-zinc-600 text-sm">
               Start a process with PM2, Docker, or run a dev server
             </p>
           </div>
-        ) : (
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((group) => (
-              <ProcessCard
-                key={group.key}
-                displayName={group.displayName}
-                processes={group.processes}
+        ) : filtered.length > 0 && (
+          <div className="mt-6 flex flex-col gap-4">
+            {sourceSections.map(({ source, groups }) => (
+              <SourceSection
+                key={source}
+                source={source}
+                groups={groups}
+                collapsed={collapsed[source] ?? false}
+                onToggle={() => handleToggleSection(source)}
                 onAction={executeAction}
-                onHide={(processId) => hideProcess(processId)}
-                onRename={(processId, name) => setCustomName(processId, name)}
-                onNote={(processId, note) => setNote(processId, note)}
+                onHide={hideProcess}
+                onRename={setCustomName}
+                onNote={setNote}
               />
             ))}
           </div>
