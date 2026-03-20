@@ -29,6 +29,8 @@ pm2 delete procview             # Stop and remove from PM2 list
 .\start.ps1 -Dev             # Dev mode shorthand
 .\start.ps1 -Build:$false    # Production without rebuilding
 .\start.ps1 -Port 3000       # Custom port
+.\restart.ps1                # Rebuild and restart PM2 process
+.\restart.ps1 -SkipBuild     # Restart PM2 without rebuilding (server-side only changes)
 ```
 
 Package manager: **yarn** (yarn.lock present).
@@ -38,7 +40,7 @@ Package manager: **yarn** (yarn.lock present).
 **Next.js 14 with App Router** + custom server (`server.js`). Path alias: `@/*` -> `./src/*`.
 
 ### Custom Server (`server.js`)
-Single HTTP server running Next.js and WebSocket (`ws`) on the same port. Initialises the collector registry on startup, which polls three independent sources (PM2, Docker, System) and broadcasts process list diffs to connected clients. Also serves `GET /api/settings` for initial settings load.
+Single HTTP server running Next.js and WebSocket (`ws`) on the same port. Initialises the collector registry on startup, which polls four independent sources (PM2, Docker, System, Tailscale) and broadcasts process list diffs to connected clients. Also serves `GET /api/settings` for initial settings load.
 
 ### Server Libraries (`src/lib/`)
 - `pm2-manager.js` — PM2 abstraction: connect/disconnect, process listing, action execution, log reading, file tailing via `fs.watch`. Uses `_deps` pattern for testability.
@@ -52,8 +54,8 @@ Single HTTP server running Next.js and WebSocket (`ws`) on the same port. Initia
 
 ### Process Object Shape
 Each process in the `PROCESS_LIST` WebSocket message has:
-- `id` — Unique stable identifier. Format: `pm2:<name>` / `docker:<shortContainerId>` / `sys:<port>:<name>`
-- `source` — `'pm2'` | `'docker'` | `'sys'`
+- `id` — Unique stable identifier. Format: `pm2:<name>` / `docker:<shortContainerId>` / `sys:<port>:<name>` / `ts:<protocol>:<port>:<path>`
+- `source` — `'pm2'` | `'docker'` | `'sys'` | `'tailscale'`
 - `name` — Display name (may be overridden by user settings)
 - `status` — Normalised status string (`'online'`, `'stopped'`, `'errored'`, etc.)
 - `cpu` — CPU usage percentage
@@ -84,8 +86,9 @@ To add new fields for a source, extract the value in the relevant collector's co
 Server→Client: `PROCESS_LIST`, `ACTION_RESULT`, `LOG_LINES`, `COLLECTOR_STATUS`, `SETTINGS_RESULT`
 Client→Server: `ACTION`, `SUBSCRIBE_LOGS`, `UNSUBSCRIBE_LOGS`, `UPDATE_SETTINGS`
 
-- `COLLECTOR_STATUS` — Broadcasts the health of each collector (`pm2`, `docker`, `sys`) with a status of `'ok'` or `'error'` and an optional error message.
+- `COLLECTOR_STATUS` — Broadcasts the health of each collector (`pm2`, `docker`, `sys`, `tailscale`) with a status of `'ok'` or `'error'` and an optional error message.
 - `SETTINGS_RESULT` — Response to `UPDATE_SETTINGS`; contains the saved settings object and a success/error flag.
+- `ACTION` — Client sends to execute a process action. Payload: `{ id, source, processId, action, params? }`. The optional `params` object is used by Tailscale `add-serve`/`add-funnel` actions.
 - `UPDATE_SETTINGS` — Client sends to persist per-process settings (display name, notes, hidden). Payload: `{ processId, settings }`.
 
 ### REST Endpoints
