@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Popover } from '@headlessui/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faDocker } from '@fortawesome/free-brands-svg-icons';
-import { faTerminal, faChevronDown, faChevronUp, faServer, faCubes, faEllipsisVertical } from '@fortawesome/free-solid-svg-icons';
+import { faTerminal, faChevronDown, faChevronUp, faServer, faCubes, faEllipsisVertical, faNetworkWired } from '@fortawesome/free-solid-svg-icons';
 import StatusBadge from './status-badge';
 import ProcessActions from './process-actions';
 
@@ -40,6 +40,7 @@ const SOURCE_ICON = {
   pm2: faCubes,
   docker: faDocker,
   system: faServer,
+  tailscale: faNetworkWired,
 };
 
 function SourceBadge({ source }) {
@@ -48,6 +49,7 @@ function SourceBadge({ source }) {
     pm2: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
     docker: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
     system: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
+    tailscale: 'bg-teal-500/10 text-teal-400 border-teal-500/20',
   };
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors[source] || colors.system}`}>

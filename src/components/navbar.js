@@ -8,6 +8,7 @@ const SOURCE_LABELS = {
   pm2: 'PM2',
   docker: 'Docker',
   system: 'System',
+  tailscale: 'Tailscale',
 };
 
 export default function Navbar({ connected, collectorStatus, onSettingsClick }) {

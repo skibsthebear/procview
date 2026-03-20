@@ -37,6 +37,12 @@ const statusConfig = {
     textClass: 'text-blue-400',
     bgClass: 'bg-blue-400/10',
   },
+  'auth-needed': {
+    label: 'Auth Needed',
+    dotClass: 'bg-orange-400 animate-status-pulse',
+    textClass: 'text-orange-400',
+    bgClass: 'bg-orange-400/10',
+  },
 };
 
 const defaultConfig = {
