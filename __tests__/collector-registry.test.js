@@ -114,7 +114,7 @@ describe('CollectorRegistry', () => {
       registry.register(pm2);
       await registry.connectAll();
       const result = await registry.routeAction('pm2', 'pm2:web', 'restart');
-      expect(pm2.executeAction).toHaveBeenCalledWith('pm2:web', 'restart');
+      expect(pm2.executeAction).toHaveBeenCalledWith('pm2:web', 'restart', undefined);
       expect(result.success).toBe(true);
     });
 
@@ -127,6 +127,15 @@ describe('CollectorRegistry', () => {
       registry.register(col);
       await registry.connectAll();
       await expect(registry.routeAction('docker', 'x', 'stop')).rejects.toThrow('unavailable');
+    });
+
+    it('passes params to collector executeAction', async () => {
+      const col = makeCollector('tailscale', { actionResult: { success: true } });
+      registry.register(col);
+      await registry.connectAll();
+      const params = { localPort: 3000 };
+      await registry.routeAction('tailscale', '__new__', 'add-serve', params);
+      expect(col.executeAction).toHaveBeenCalledWith('__new__', 'add-serve', params);
     });
   });
 

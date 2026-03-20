@@ -163,11 +163,11 @@ class CollectorRegistry {
     return merged.map(({ _childPids, ...proc }) => proc);
   }
 
-  async routeAction(source, processId, action) {
+  async routeAction(source, processId, action, params) {
     const entry = this._collectors.get(source);
     if (!entry) throw new Error(`Unknown source: ${source}`);
     if (!entry.available) throw new Error(`Collector '${source}' is unavailable`);
-    return entry.collector.executeAction(processId, action);
+    return entry.collector.executeAction(processId, action, params);
   }
 
   async routeGetLogs(source, processId, lines) {
