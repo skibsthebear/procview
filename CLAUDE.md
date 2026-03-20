@@ -17,6 +17,12 @@ yarn test         # Run tests (vitest run)
 yarn test:watch   # Watch mode tests (vitest)
 ```
 
+```bash
+pm2 start ecosystem.config.js   # Start with PM2 (fork mode, default port 7829)
+pm2 stop procview               # Stop
+pm2 delete procview             # Stop and remove from PM2 list
+```
+
 ```powershell
 .\start.ps1                  # Production mode with rebuild (default)
 .\start.ps1 -Mode dev        # Dev mode with hot-reload
@@ -42,6 +48,7 @@ Single HTTP server running Next.js and WebSocket (`ws`) on the same port. Initia
 - `src/lib/collectors/pm2-collector.js` — Collects PM2 processes. Emits processes with `source: 'pm2'`. Supports start/stop/restart/reload/delete actions and log streaming.
 - `src/lib/collectors/docker-collector.js` — Collects Docker containers via `dockerode`. Auto-detects Docker socket (`/var/run/docker.sock` on Linux/macOS, named pipe on Windows). Emits processes with `source: 'docker'`. Supports start/stop/restart actions and log streaming.
 - `src/lib/collectors/system-collector.js` — Collects system processes listening on ports via `ss`/`netstat`. Emits processes with `source: 'sys'`. Supports kill action. No log streaming (`hasLogs: false`).
+- `src/lib/collectors/tailscale-collector.js` — Collects Tailscale Serve/Funnel rules via `tailscale serve status --json` and `tailscale status --json` CLI calls. Emits processes with `source: 'tailscale'`. Supports remove/upgrade/downgrade/login/add-serve/add-funnel actions. No log streaming (`hasLogs: false`). `_deps` pattern with `{ exec }` for testability. Implements `getMetadata()` returning `{ hostname }` for COLLECTOR_STATUS metadata.
 
 ### Process Object Shape
 Each process in the `PROCESS_LIST` WebSocket message has:
@@ -62,6 +69,14 @@ Each process in the `PROCESS_LIST` WebSocket message has:
 - `composeService` — Docker Compose service name (Docker only, or null)
 - `actions` — Array of action strings available for this process (e.g. `['start','stop','restart','reload','delete']`)
 - `hasLogs` — Boolean; whether live log streaming is supported for this process
+- `tsType` — `'serve'` | `'funnel'` (Tailscale only, or undefined)
+- `tsProtocol` — `'https'` | `'tcp'` (Tailscale only, or undefined)
+- `tsExternalPort` — External port number (Tailscale only, or undefined)
+- `tsPath` — Path prefix, e.g. `'/'` or `'/api'` (Tailscale only, or undefined)
+- `tsLocalTarget` — Local target string, e.g. `'http://127.0.0.1:3000'` (Tailscale only, or undefined)
+- `tsTailnetUrl` — Full tailnet URL (Tailscale HTTPS only, or null)
+- `tsPublicUrl` — Public URL (Tailscale funnels only, or null)
+- `tsNodeStatus` — `'connected'` | `'needs-login'` | `'stopped'` (Tailscale only, or undefined)
 
 To add new fields for a source, extract the value in the relevant collector's collection method — no protocol changes needed.
 
@@ -91,6 +106,7 @@ All client components (`'use client'`). Key components:
 - `navbar.js` — Top navigation bar.
 - `status-badge.js` — Reusable status indicator pill.
 - `toast-provider.js` — Wraps `react-toastify` in a `'use client'` boundary (required because `src/app/layout.js` is a server component).
+- `tailscale-modal.js` — Modal for creating new Tailscale Serve/Funnel rules. Accepts `tsHostname`, `tsProcesses`, `onAdd`, `onClose` props. Validates port/path, shows URL preview, tracks funnel slot usage (3 max).
 
 ### Hooks (`src/hooks/`)
 - `use-processes.js` — WebSocket connection, unified process list state, action execution (promise-based with 10s timeout). Replaces the old `use-pm2.js`. Uses `wsRef.current !== ws` staleness guard for React Strict Mode safety.
@@ -108,6 +124,7 @@ Configure via `.env.local` (not committed) or environment variables:
 - `COLLECTOR_MAX_FAILURES` — Number of consecutive failures before a collector is marked degraded (default: 3)
 - `LOG_LINES` — Initial log lines to load (default: 200)
 - `DATABASE_PATH` — Path to the SQLite database file (default: `./data/procview.db`)
+- `TAILSCALE_POLL_INTERVAL` — Tailscale poll interval in ms (default: 15000)
 
 ## Testing
 
@@ -119,11 +136,14 @@ Uses Vitest. Tests in `__tests__/`:
 - `pm2-collector.test.js` — PM2 collector with mocked PM2 dependency
 - `docker-collector.test.js` — Docker collector with mocked `dockerode` dependency
 - `system-collector.test.js` — System collector with mocked `child_process` dependency
+- `tailscale-collector.test.js` — Tailscale collector with mocked `_deps.exec` (`child_process.execFile`)
 
 Run: `yarn test`
 
 ## Gotchas
 
+- **PM2 fork mode only** — `ecosystem.config.js` uses fork mode. The custom server holds WebSocket state in-process (`logSubscriptions`, `cachedProcessList`) and maintains a PM2 daemon connection, so cluster mode is not viable.
+- **Windows PM2 persistence** — `pm2 startup` does not work on Windows. Use `pm2-windows-startup` (`npm i -g pm2-windows-startup && pm2-startup install && pm2 save`).
 - **CJS module format** — Server-side files (`server.js`, `src/lib/`) use CommonJS (`require`/`module.exports`). No `"type": "module"` in package.json. Vitest handles CJS interop automatically for test files using ESM imports.
 - **Testing CJS with Vitest** — `vi.mock()` cannot intercept `require()` calls. Server modules use `_deps` injection pattern instead: `pm2Manager._deps.pm2 = mockPm2` in tests.
 - **Client components in layout** — `src/app/layout.js` is a server component. Any client-side library (e.g., react-toastify) must be wrapped in a `'use client'` component (see `toast-provider.js`).
@@ -137,3 +157,6 @@ Run: `yarn test`
 - **`dockerode` `_deps` pattern** — `docker-collector.js` uses `_deps.Docker` as a factory function (not a constructor). Call it as `this._deps.Docker()`, not `new this._deps.Docker()`, so test mocks using arrow functions work correctly.
 - **`data/` directory auto-creation** — `db.js` creates the `data/` directory and SQLite database file automatically on first run. The `data/` directory is gitignored. Do not commit `data/procview.db`.
 - **Server shutdown** — `server.js` shutdown handler uses a `shuttingDown` guard to prevent duplicate SIGINT/SIGTERM firings. Must `terminate()` all WebSocket clients before `server.close()`, otherwise the callback hangs waiting for open connections to drain. Has a 3-second `setTimeout(...).unref()` fallback.
+- **Tailscale CLI dependency** — `tailscale-collector.js` shells out to the `tailscale` CLI binary. The CLI must be installed and on PATH. If Tailscale is not installed, the collector fails gracefully on connect and is marked degraded — other collectors continue unaffected.
+- **Funnel port limit** — Tailscale Funnel is limited to 3 ports per node (443, 8443, 10000). TCP serves cannot be upgraded to funnels. The modal enforces both constraints.
+- **`COLLECTOR_STATUS` metadata** — `getCollectorStatus()` now includes an optional `metadata` field per collector. The Tailscale collector uses this to pass its hostname to the client for URL previews. Other collectors return `{}`.
