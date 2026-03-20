@@ -45,6 +45,8 @@ Open [http://localhost:7829](http://localhost:7829).
 .\start.ps1            # Production mode with rebuild
 .\start.ps1 -Dev       # Dev mode with hot-reload
 .\start.ps1 -Port 3000 # Custom port
+.\restart.ps1          # Rebuild and restart PM2 process
+.\restart.ps1 -SkipBuild  # Restart PM2 without rebuilding (server-side only changes)
 ```
 
 ## Requirements
