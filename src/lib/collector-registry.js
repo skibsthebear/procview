@@ -125,16 +125,17 @@ class CollectorRegistry {
   }
 
   getAll() {
-    // Collect all data from available + recently-available collectors
     const allPm2 = [];
     const allDocker = [];
     const allSystem = [];
+    const allOther = [];
 
     for (const [, entry] of this._collectors) {
       for (const proc of entry.lastData) {
         if (proc.source === 'pm2') allPm2.push(proc);
         else if (proc.source === 'docker') allDocker.push(proc);
         else if (proc.source === 'system') allSystem.push(proc);
+        else allOther.push(proc);
       }
     }
 
@@ -142,7 +143,6 @@ class CollectorRegistry {
     const dockerPids = new Set();
     for (const proc of allDocker) {
       if (proc.pid != null) dockerPids.add(proc.pid);
-      // Include container child PIDs if available
       if (proc._childPids) {
         for (const p of proc._childPids) dockerPids.add(p);
       }
@@ -159,7 +159,7 @@ class CollectorRegistry {
     });
 
     // Strip internal fields before returning
-    const merged = [...allPm2, ...allDocker, ...dedupedSystem];
+    const merged = [...allPm2, ...allDocker, ...dedupedSystem, ...allOther];
     return merged.map(({ _childPids, ...proc }) => proc);
   }
 
@@ -196,6 +196,9 @@ class CollectorRegistry {
       result[name] = {
         available: entry.available,
         lastScan: entry.lastScan,
+        metadata: typeof entry.collector.getMetadata === 'function'
+          ? entry.collector.getMetadata()
+          : {},
       };
     }
     return result;

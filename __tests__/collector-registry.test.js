@@ -89,6 +89,23 @@ describe('CollectorRegistry', () => {
       expect(all).toHaveLength(1);
       expect(all[0].source).toBe('pm2');
     });
+
+    it('passes through non-dedup sources (e.g. tailscale) without PID filtering', async () => {
+      const pm2 = makeCollector('pm2', {
+        scanResult: [{ source: 'pm2', id: 'pm2:web', name: 'web', pid: 100, ports: [3000] }],
+      });
+      const tailscale = makeCollector('tailscale', {
+        scanResult: [{ source: 'tailscale', id: 'ts:https:443:/', name: 'Port 3000', pid: null, ports: [3000] }],
+      });
+      registry.register(pm2);
+      registry.register(tailscale);
+      await registry.connectAll();
+      await registry.pollAll();
+      const all = registry.getAll();
+      expect(all).toHaveLength(2);
+      expect(all.some(p => p.source === 'tailscale')).toBe(true);
+      expect(all.some(p => p.source === 'pm2')).toBe(true);
+    });
   });
 
   describe('routeAction', () => {
@@ -206,6 +223,23 @@ describe('CollectorRegistry', () => {
       expect(status.pm2).toBeDefined();
       expect(status.pm2.available).toBe(true);
       expect(status.docker).toBeDefined();
+    });
+
+    it('includes metadata from collectors that implement getMetadata()', async () => {
+      const col = makeCollector('tailscale');
+      col.getMetadata = vi.fn(() => ({ hostname: 'sakib-pc.mynet.ts.net' }));
+      registry.register(col);
+      await registry.connectAll();
+      const status = registry.getCollectorStatus();
+      expect(status.tailscale.metadata).toEqual({ hostname: 'sakib-pc.mynet.ts.net' });
+    });
+
+    it('returns empty metadata for collectors without getMetadata()', async () => {
+      const col = makeCollector('pm2');
+      registry.register(col);
+      await registry.connectAll();
+      const status = registry.getCollectorStatus();
+      expect(status.pm2.metadata).toEqual({});
     });
   });
 
