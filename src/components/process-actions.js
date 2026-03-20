@@ -10,6 +10,9 @@ import {
   faPowerOff,
   faTrash,
   faSkull,
+  faArrowUp,
+  faArrowDown,
+  faArrowRightToBracket,
 } from '@fortawesome/free-solid-svg-icons';
 import { toast } from 'react-toastify';
 
@@ -148,6 +151,119 @@ export default function ProcessActions({ source, processId, name, status, action
             )}
           </Popover.Panel>
         </Popover>
+      )}
+
+      {/* Tailscale: Remove with confirmation */}
+      {(actions || []).includes('remove') && (
+        <Popover className="relative">
+          <Popover.Button
+            className="p-1.5 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+            title="Remove"
+          >
+            <FontAwesomeIcon icon={faTrash} className={`text-xs ${loading === 'remove' ? 'animate-spin' : ''}`} />
+          </Popover.Button>
+          <Popover.Panel className="absolute right-0 z-10 mt-1 glass-card p-3 w-56">
+            {({ close }) => (
+              <div>
+                <p className="text-xs text-zinc-400 mb-2">
+                  Remove <strong className="text-zinc-200">{name}</strong>?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { handleAction('remove'); close(); }}
+                    className="flex-1 px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded-md hover:bg-red-500/30 transition-colors"
+                  >
+                    Remove
+                  </button>
+                  <button onClick={close} className="flex-1 px-2 py-1 bg-white/5 text-zinc-400 text-xs rounded-md hover:bg-white/10 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </Popover.Panel>
+        </Popover>
+      )}
+
+      {/* Tailscale: Upgrade to Funnel */}
+      {(actions || []).includes('upgrade') && (
+        <Popover className="relative">
+          <Popover.Button
+            className="p-1.5 rounded-md text-zinc-400 hover:text-teal-400 hover:bg-teal-400/10 transition-colors"
+            title="Upgrade to Funnel"
+          >
+            <FontAwesomeIcon icon={faArrowUp} className={`text-xs ${loading === 'upgrade' ? 'animate-spin' : ''}`} />
+          </Popover.Button>
+          <Popover.Panel className="absolute right-0 z-10 mt-1 glass-card p-3 w-56">
+            {({ close }) => (
+              <div>
+                <p className="text-xs text-zinc-400 mb-2">
+                  Upgrade <strong className="text-zinc-200">{name}</strong> to Funnel?
+                </p>
+                <p className="text-[10px] text-orange-400 mb-2">This will make the service publicly accessible from the internet.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { handleAction('upgrade'); close(); }}
+                    className="flex-1 px-2 py-1 bg-teal-500/20 text-teal-400 text-xs rounded-md hover:bg-teal-500/30 transition-colors"
+                  >
+                    Upgrade
+                  </button>
+                  <button onClick={close} className="flex-1 px-2 py-1 bg-white/5 text-zinc-400 text-xs rounded-md hover:bg-white/10 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </Popover.Panel>
+        </Popover>
+      )}
+
+      {/* Tailscale: Downgrade to Serve */}
+      {(actions || []).includes('downgrade') && (
+        <Popover className="relative">
+          <Popover.Button
+            className="p-1.5 rounded-md text-zinc-400 hover:text-yellow-400 hover:bg-yellow-400/10 transition-colors"
+            title="Downgrade to Serve"
+          >
+            <FontAwesomeIcon icon={faArrowDown} className={`text-xs ${loading === 'downgrade' ? 'animate-spin' : ''}`} />
+          </Popover.Button>
+          <Popover.Panel className="absolute right-0 z-10 mt-1 glass-card p-3 w-56">
+            {({ close }) => (
+              <div>
+                <p className="text-xs text-zinc-400 mb-2">
+                  Downgrade <strong className="text-zinc-200">{name}</strong> to Serve?
+                </p>
+                <p className="text-[10px] text-yellow-400 mb-2">This will remove public internet access.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { handleAction('downgrade'); close(); }}
+                    className="flex-1 px-2 py-1 bg-yellow-500/20 text-yellow-400 text-xs rounded-md hover:bg-yellow-500/30 transition-colors"
+                  >
+                    Downgrade
+                  </button>
+                  <button onClick={close} className="flex-1 px-2 py-1 bg-white/5 text-zinc-400 text-xs rounded-md hover:bg-white/10 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </Popover.Panel>
+        </Popover>
+      )}
+
+      {/* Tailscale: Login (no confirmation) */}
+      {(actions || []).includes('login') && (
+        <button
+          onClick={() => handleAction('login')}
+          disabled={loading !== null}
+          title="Login"
+          className="p-1.5 rounded-md text-zinc-400 hover:text-blue-400 hover:bg-blue-400/10 disabled:opacity-30 transition-colors"
+        >
+          <FontAwesomeIcon
+            icon={faArrowRightToBracket}
+            className={`text-xs ${loading === 'login' ? 'animate-spin' : ''}`}
+          />
+        </button>
       )}
     </div>
   );
